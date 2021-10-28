@@ -3,6 +3,7 @@
 #include "malloc.h"
 
 #include <stddef.h>
+#include <unistd.h>
 #include <sys/mman.h>
 #include <string.h>
 #include <err.h>
@@ -51,14 +52,22 @@ struct page *get_first(size_t size)
 // Find a free block in a page, return it if find else return NULL
 static struct header *find_block(size_t size)
 {
-    struct page *p = get_first(near_size(size, 16));
+    struct page *p = get_first(0);
+    size_t data_size = near_size(size, 16);
     while (p != NULL)
     {
         struct header *header = p->meta;
         while (header != NULL)
         {
             if (header->free && header->size >= size)
-                return header;
+            {
+                char *exit = (char *)header + 2*sizeof(struct header) + data_size;
+                char *endPage = (char *)p + p->page_size; // End of the page
+                if (exit < endPage)
+                {
+                    return header;
+                }
+            }
             header = header->next;
         }
         p = p->next;
@@ -74,7 +83,7 @@ struct header *split_block(struct header *new, size_t size)
     new->size = data_size;
     new->used_size = size;
     new->free = 0;
-    new->data = new + 1;
+    new->data = new + 1; // + sizeof(header)
     // Split with the used and free part
     char *new_adr = (char *)new;
     char *next_ptr = new_adr + sizeof(struct header) + data_size;
@@ -127,6 +136,22 @@ void *malloc(size_t size)
     return NULL;
 }
 
+// Remove empty page in the linked list
+struct page *remove_empty_page(void)
+{
+    struct page *page = get_first(0);
+    struct header *first_h = page->meta;
+    if (first_h->next == NULL && first_h->free == 1) // First is empty
+    {
+        struct page *res = page->next;
+        int error = munmap(res, res->page_size);
+        if (error == -1)
+            errx(1, "free: fail to remove empty map");
+        return res;
+    }
+    return NULL;
+}
+
 __attribute__((visibility("default")))
 void free(void *ptr)
 {
@@ -137,13 +162,31 @@ void free(void *ptr)
     header->free = 1;
     header->used_size = 0;
 }
-/*
-   __attribute__((visibility("default")))
-   void *realloc(void *ptr, size_t size)
-   {
-   return NULL;
-   }
-   */
+
+__attribute__((visibility("default")))
+void *realloc(void *ptr, size_t size)
+{
+    if (ptr == NULL)
+        return malloc(size);
+    if (size == 0)
+        free(ptr);
+    struct header *header = ptr;
+    header = header - 1;
+    if (size <= header->size) // Remain space in current header
+    {
+        header->used_size = size;
+        return header->data;
+    }
+    else
+    {
+        void *new_alloc = malloc(size);
+        mempcpy(new_alloc, header->data, header->used_size);
+        header->free = 1;
+        header->used_size = 0;
+        return new_alloc;
+    }
+    return NULL;
+}
 
 __attribute__((visibility("default")))
 void *calloc(size_t nmemb, size_t size)

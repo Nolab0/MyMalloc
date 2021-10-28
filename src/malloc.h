@@ -16,6 +16,8 @@ struct header
 {
     struct header *next; // Next header
 
+    struct header *prev; // Previous header
+
     size_t size; // Size of data zone
 
     size_t used_size; // Size asked by the user
