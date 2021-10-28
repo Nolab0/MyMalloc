@@ -32,8 +32,6 @@ void free(void *ptr);
 void *calloc(size_t number, size_t size);
 void *realloc(void *ptr, size_t size);
 
-void print_adr(struct page *page);
-
 extern struct page *init;
 
 #endif

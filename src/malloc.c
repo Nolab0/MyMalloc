@@ -103,7 +103,8 @@ static struct header *split_block(struct header *new, size_t size)
     return new;
 }
 
-__attribute__((visibility("default"))) void *malloc(size_t size)
+__attribute__((visibility("default")))
+void *malloc(size_t size)
 {
     if (size == 0)
         return NULL;
@@ -142,17 +143,31 @@ __attribute__((visibility("default"))) void *malloc(size_t size)
     return NULL;
 }
 
+// Return wether a page is empty or not
+static int is_empty(struct page *page)
+{
+    struct header *header = page->meta;
+    while (header != NULL)
+    {
+        if (!header->free)
+            return 0;
+        header = header->next;
+    }
+    return 1;
+}
+
 // Remove empty page in the linked list
 static void remove_empty_pages(void)
 {
     struct page *current = get_first(0);
+    if (current == NULL)
+        return;
     current = current->next;
     struct page *prev = get_first(0);
     while (current != NULL)
     {
         current = prev->next;
-        if (current != NULL && current->meta->next == NULL
-            && current->meta->free == 1) // Empty page
+        if (current != NULL && is_empty(current)) // Empty page
         {
             struct page *save_next = current->next;
             int error = munmap(current, current->page_size);
@@ -164,15 +179,18 @@ static void remove_empty_pages(void)
             prev = prev->next;
     }
     prev = get_first(0);
-    if (prev->meta->next == NULL && prev->meta->free == 1)
+    if (is_empty(prev))
     {
+        struct page *save = prev->next;
         int error = munmap(prev, prev->page_size);
         if (error == -1)
             errx(1, "free: failed to unmap page");
-        init = NULL;
+        init = save;
     }
 }
-__attribute__((visibility("default"))) void free(void *ptr)
+
+__attribute__((visibility("default")))
+void free(void *ptr)
 {
     if (ptr == NULL)
         return;
@@ -180,10 +198,16 @@ __attribute__((visibility("default"))) void free(void *ptr)
     header = header - 1;
     header->free = 1;
     header->used_size = 0;
+    if (header->next && header->next->free == 1)
+    {
+        header->size += header->next->size;
+        header->next = header->next->next;
+    }
     remove_empty_pages();
 }
 
-__attribute__((visibility("default"))) void *realloc(void *ptr, size_t size)
+__attribute__((visibility("default")))
+void *realloc(void *ptr, size_t size)
 {
     if (ptr == NULL)
         return malloc(size);
