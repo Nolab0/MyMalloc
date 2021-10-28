@@ -18,12 +18,14 @@ struct header
 
     size_t size; // Size of data zone
 
+    size_t used_size; // Size asked by the user
+
     size_t free; // 1 if free 0 otherwise
 
     void *data; // Ptr to the data
 };
 
-void *my_malloc(size_t size);
+void *malloc(size_t size);
 void free(void *ptr);
 void *calloc(size_t number, size_t size);
 void *realloc(void *ptr, size_t size);

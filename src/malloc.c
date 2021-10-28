@@ -4,6 +4,8 @@
 
 #include <stddef.h>
 #include <sys/mman.h>
+#include <string.h>
+#include <err.h>
 
 struct page *init = NULL;
 
@@ -30,6 +32,7 @@ struct page *create_page(size_t size)
     void *header_ptr = new_page + 1;
     struct header *first_header = header_ptr;
     first_header->size = alloc_size - sizeof(struct page);
+    first_header->used_size = 0;
     first_header->free = 1;
     first_header->data = first_header + 1; // get the data
     first_header->next = NULL;
@@ -54,7 +57,7 @@ static struct header *find_block(size_t size)
         struct header *header = p->meta;
         while (header != NULL)
         {
-            if (header->free && header->size > size)
+            if (header->free && header->size >= size)
                 return header;
             header = header->next;
         }
@@ -63,11 +66,13 @@ static struct header *find_block(size_t size)
     return NULL; // Not found, need to expand page
 }
 
-// Create a block in the base of h and split the unsused part
-struct header *create_block(struct header *new, size_t data_size)
+// Split a block with a free part and return it
+struct header *split_block(struct header *new, size_t size)
 {
+    size_t data_size = near_size(size, 16);
     size_t save_size = new->size;
     new->size = data_size;
+    new->used_size = size;
     new->free = 0;
     new->data = new + 1;
     // Split with the used and free part
@@ -76,7 +81,8 @@ struct header *create_block(struct header *new, size_t data_size)
     struct header *next_header = (struct header *)next_ptr;
     next_header->free = 1;
     next_header->size = save_size - sizeof(struct header) - data_size;
-    next_header->data = 0;
+    next_header->used_size = 0;
+    next_header->next = new->next;
     new->next = next_header;
     char *data_ptr = next_ptr + sizeof(struct header);
     next_header->data = data_ptr;
@@ -84,43 +90,50 @@ struct header *create_block(struct header *new, size_t data_size)
 }
 
 __attribute__((visibility("default")))
-void *my_malloc(size_t size)
+void *malloc(size_t size)
 {
     if (size == 0)
         return NULL;
-    size_t data_size = near_size(size, 16);
-    struct page *init = get_first(data_size);
+    size_t alloc_size = near_size(size, 16);
+    struct page *init = get_first(alloc_size);
     if (init == NULL)
         return NULL;
-    struct header *new = find_block(data_size);
-    if (new != NULL && new->next == NULL) // Last block of page
+    struct header *new = find_block(alloc_size);
+    if (new != NULL && new->size > alloc_size + sizeof(struct header)) // Block larger than necessary
     {
-        new = create_block(new, data_size);
+        new = split_block(new, size);
         print_adr(init);
         return new->data;
     }
     else if (new != NULL) // Find a convinient block
     {
-        new->size = data_size;
+        new->used_size = size;
         new->free = 0;
+        print_adr(init);
         return new->data;
     }
     else
     {
-        struct page *new_page = create_page(data_size);
+        struct page *new_page = create_page(alloc_size);
+        struct page *save_init = init;
+        while (save_init->next != NULL)
+            save_init = save_init->next;
+        save_init->next = new_page; // Link the new page
         new = new_page->meta;
-        new = create_block(new, data_size);
+        new = split_block(new, size);
         print_adr(init);
         return new->data;
     }
     return NULL;
 }
 
-    __attribute__((visibility("default")))
+__attribute__((visibility("default")))
 void free(void *ptr)
 {
     struct header *header = ptr;
+    header = header - 1;
     header->free = 1;
+    header->used_size = 0;
 }
 /*
    __attribute__((visibility("default")))
@@ -128,9 +141,23 @@ void free(void *ptr)
    {
    return NULL;
    }
+   */
 
-   __attribute__((visibility("default")))
-   void *calloc(size_t nmemb, size_t size)
-   {
-   return NULL;
-   }*/
+__attribute__((visibility("default")))
+void *calloc(size_t nmemb, size_t size)
+{
+    if (nmemb == 0 || size == 0)
+        return NULL;
+    size_t res = 0;
+    int over = __builtin_umull_overflow(nmemb, size, &res);
+    if (over)
+        errx(1, "calloc: overflow detected");
+    else
+    {
+        void *alloc = malloc(res);
+        char *set = alloc;
+        for (size_t i = 0; i < res; i++)
+            set[i] = 0;
+        return alloc;
+    }
+}
