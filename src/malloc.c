@@ -102,14 +102,14 @@ void *malloc(size_t size)
     if (new != NULL && new->size > alloc_size + sizeof(struct header)) // Block larger than necessary
     {
         new = split_block(new, size);
-        print_adr(init);
+        //print_adr(init);
         return new->data;
     }
     else if (new != NULL) // Find a convinient block
     {
         new->used_size = size;
         new->free = 0;
-        print_adr(init);
+        //print_adr(init);
         return new->data;
     }
     else
@@ -121,7 +121,7 @@ void *malloc(size_t size)
         save_init->next = new_page; // Link the new page
         new = new_page->meta;
         new = split_block(new, size);
-        print_adr(init);
+        //print_adr(init);
         return new->data;
     }
     return NULL;
@@ -130,6 +130,8 @@ void *malloc(size_t size)
 __attribute__((visibility("default")))
 void free(void *ptr)
 {
+    if (ptr == NULL)
+        return;
     struct header *header = ptr;
     header = header - 1;
     header->free = 1;
