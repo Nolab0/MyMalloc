@@ -18,14 +18,16 @@ static int near_size(int nb, int size)
     return nb;
 }
 
-struct page *create_page(size_t size)
+static struct page *create_page(size_t size)
 {
     size += sizeof(struct page);
     size += (sizeof(struct header) * 2);
     size_t alloc_size = near_size(size, 4096);
     void *alloc = mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (alloc == MAP_FAILED)
+    {
         return NULL;
+    }
     struct page *new_page = alloc;
     new_page->page_size = alloc_size;
     new_page->next = NULL;
@@ -42,7 +44,7 @@ struct page *create_page(size_t size)
 }
 
 // Return a page of size multiple of 4096 on the first call and the first page otherwise
-struct page *get_first(size_t size)
+static struct page *get_first(size_t size)
 {
     if (init == NULL)
         init = create_page(size);
@@ -76,7 +78,7 @@ static struct header *find_block(size_t size)
 }
 
 // Split a block with a free part and return it
-struct header *split_block(struct header *new, size_t size)
+static struct header *split_block(struct header *new, size_t size)
 {
     size_t data_size = near_size(size, 16);
     size_t save_size = new->size;
@@ -137,21 +139,34 @@ void *malloc(size_t size)
 }
 
 // Remove empty page in the linked list
-struct page *remove_empty_page(void)
+static void remove_empty_pages(void)
 {
-    struct page *page = get_first(0);
-    struct header *first_h = page->meta;
-    if (first_h->next == NULL && first_h->free == 1) // First is empty
+    struct page *current = get_first(0);
+    current = current->next;
+    struct page *prev = get_first(0);
+    while (current != NULL)
     {
-        struct page *res = page->next;
-        int error = munmap(res, res->page_size);
-        if (error == -1)
-            errx(1, "free: fail to remove empty map");
-        return res;
+        current = prev->next;
+        if (current != NULL && current->meta->next == NULL && current->meta->free == 1) // Empty page
+        {
+            struct page *save_next = current->next;
+            int error = munmap(current, current->page_size);
+            if (error == -1)
+                errx(1, "free: failed to unmap page");
+            prev->next = save_next;
+        }
+        else
+            prev = prev->next;
     }
-    return NULL;
+    prev = get_first(0);
+    if (prev->meta->next == NULL && prev->meta->free == 1)
+    {
+        int error = munmap(prev, prev->page_size);
+        if (error == -1)
+            errx(1, "free: failed to unmap page");
+        init = NULL;
+    }
 }
-
 __attribute__((visibility("default")))
 void free(void *ptr)
 {
@@ -161,6 +176,7 @@ void free(void *ptr)
     header = header - 1;
     header->free = 1;
     header->used_size = 0;
+    remove_empty_pages();
 }
 
 __attribute__((visibility("default")))
