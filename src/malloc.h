@@ -37,4 +37,3 @@ void print_adr(struct page *page);
 extern struct page *init;
 
 #endif
-

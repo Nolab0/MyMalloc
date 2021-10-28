@@ -2,11 +2,11 @@
 
 #include "malloc.h"
 
-#include <stddef.h>
-#include <unistd.h>
-#include <sys/mman.h>
-#include <string.h>
 #include <err.h>
+#include <stddef.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 struct page *init = NULL;
 
@@ -23,7 +23,8 @@ static struct page *create_page(size_t size)
     size += sizeof(struct page);
     size += (sizeof(struct header) * 2);
     size_t alloc_size = near_size(size, 4096);
-    void *alloc = mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    void *alloc = mmap(NULL, alloc_size, PROT_READ | PROT_WRITE,
+                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (alloc == MAP_FAILED)
     {
         return NULL;
@@ -43,7 +44,8 @@ static struct page *create_page(size_t size)
     return new_page;
 }
 
-// Return a page of size multiple of 4096 on the first call and the first page otherwise
+// Return a page of size multiple of 4096 on the first call and the first page
+// otherwise
 static struct page *get_first(size_t size)
 {
     if (init == NULL)
@@ -63,7 +65,8 @@ static struct header *find_block(size_t size)
         {
             if (header->free && header->size >= size)
             {
-                char *exit = (char *)header + 2*sizeof(struct header) + data_size;
+                char *exit =
+                    (char *)header + 2 * sizeof(struct header) + data_size;
                 char *endPage = (char *)p + p->page_size; // End of the page
                 if (exit < endPage)
                 {
@@ -100,8 +103,7 @@ static struct header *split_block(struct header *new, size_t size)
     return new;
 }
 
-__attribute__((visibility("default")))
-void *malloc(size_t size)
+__attribute__((visibility("default"))) void *malloc(size_t size)
 {
     if (size == 0)
         return NULL;
@@ -110,17 +112,19 @@ void *malloc(size_t size)
     if (init == NULL)
         return NULL;
     struct header *new = find_block(alloc_size);
-    if (new != NULL && new->size > alloc_size + sizeof(struct header)) // Block larger than necessary
+    if (new
+        != NULL &&new->size
+            > alloc_size + sizeof(struct header)) // Block larger than necessary
     {
         new = split_block(new, size);
-        //print_adr(init);
+        // print_adr(init);
         return new->data;
     }
     else if (new != NULL) // Find a convinient block
     {
         new->used_size = size;
         new->free = 0;
-        //print_adr(init);
+        // print_adr(init);
         return new->data;
     }
     else
@@ -132,7 +136,7 @@ void *malloc(size_t size)
         save_init->next = new_page; // Link the new page
         new = new_page->meta;
         new = split_block(new, size);
-        //print_adr(init);
+        // print_adr(init);
         return new->data;
     }
     return NULL;
@@ -147,7 +151,8 @@ static void remove_empty_pages(void)
     while (current != NULL)
     {
         current = prev->next;
-        if (current != NULL && current->meta->next == NULL && current->meta->free == 1) // Empty page
+        if (current != NULL && current->meta->next == NULL
+            && current->meta->free == 1) // Empty page
         {
             struct page *save_next = current->next;
             int error = munmap(current, current->page_size);
@@ -167,8 +172,7 @@ static void remove_empty_pages(void)
         init = NULL;
     }
 }
-__attribute__((visibility("default")))
-void free(void *ptr)
+__attribute__((visibility("default"))) void free(void *ptr)
 {
     if (ptr == NULL)
         return;
@@ -179,8 +183,7 @@ void free(void *ptr)
     remove_empty_pages();
 }
 
-__attribute__((visibility("default")))
-void *realloc(void *ptr, size_t size)
+__attribute__((visibility("default"))) void *realloc(void *ptr, size_t size)
 {
     if (ptr == NULL)
         return malloc(size);
@@ -204,8 +207,7 @@ void *realloc(void *ptr, size_t size)
     return NULL;
 }
 
-__attribute__((visibility("default")))
-void *calloc(size_t nmemb, size_t size)
+__attribute__((visibility("default"))) void *calloc(size_t nmemb, size_t size)
 {
     if (nmemb == 0 || size == 0)
         return NULL;
