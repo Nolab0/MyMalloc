@@ -12,6 +12,7 @@ struct page
     struct page *next;
 };
 
+// Need to reduce the field to optimize space
 struct header
 {
     struct header *next; // Next header
@@ -20,11 +21,7 @@ struct header
 
     size_t size; // Size of data zone
 
-    size_t used_size; // Size asked by the user
-
-    size_t free; // 1 if free 0 otherwise
-
-    void *data; // Ptr to the data
+    int free; // 1 if free 0 otherwise
 };
 
 void *malloc(size_t size);

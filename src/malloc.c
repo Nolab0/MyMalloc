@@ -8,16 +8,11 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include "utils.h"
+
 struct page *init = NULL;
 
-// Return the first multiple of size
-static int near_size(int nb, int size)
-{
-    while (nb % size != 0)
-        nb++;
-    return nb;
-}
-
+// Create a page with mmap
 static struct page *create_page(size_t size)
 {
     size += sizeof(struct page);
@@ -36,10 +31,9 @@ static struct page *create_page(size_t size)
     void *header_ptr = new_page + 1;
     struct header *first_header = header_ptr;
     first_header->size = alloc_size - sizeof(struct page);
-    first_header->used_size = 0;
     first_header->free = 1;
-    first_header->data = first_header + 1; // get the data
     first_header->next = NULL;
+    first_header->prev = NULL;
     new_page->meta = first_header;
     return new_page;
 }
@@ -86,24 +80,20 @@ static struct header *split_block(struct header *new, size_t size)
     size_t data_size = near_size(size, 16);
     size_t save_size = new->size;
     new->size = data_size;
-    new->used_size = size;
     new->free = 0;
-    new->data = new + 1; // + sizeof(header)
     // Split with the used and free part
     char *new_adr = (char *)new;
     char *next_ptr = new_adr + sizeof(struct header) + data_size;
     struct header *next_header = (struct header *)next_ptr;
     next_header->free = 1;
     next_header->size = save_size - sizeof(struct header) - data_size;
-    next_header->used_size = 0;
     next_header->next = new->next;
     new->next = next_header;
-    char *data_ptr = next_ptr + sizeof(struct header);
-    next_header->data = data_ptr;
+    next_header->prev = new;
     return new;
 }
 
-__attribute__((visibility("default")))
+__attribute__((visibility("default"))) 
 void *malloc(size_t size)
 {
     if (size == 0)
@@ -118,15 +108,12 @@ void *malloc(size_t size)
             > alloc_size + sizeof(struct header)) // Block larger than necessary
     {
         new = split_block(new, size);
-        // print_adr(init);
-        return new->data;
+        return get_data(new);
     }
     else if (new != NULL) // Find a convinient block
     {
-        new->used_size = size;
         new->free = 0;
-        // print_adr(init);
-        return new->data;
+        return get_data(new);
     }
     else
     {
@@ -137,8 +124,7 @@ void *malloc(size_t size)
         save_init->next = new_page; // Link the new page
         new = new_page->meta;
         new = split_block(new, size);
-        // print_adr(init);
-        return new->data;
+        return get_data(new);
     }
     return NULL;
 }
@@ -189,7 +175,7 @@ static void remove_empty_pages(void)
     }
 }
 
-__attribute__((visibility("default")))
+__attribute__((visibility("default"))) 
 void free(void *ptr)
 {
     if (ptr == NULL)
@@ -197,16 +183,24 @@ void free(void *ptr)
     struct header *header = ptr;
     header = header - 1;
     header->free = 1;
-    header->used_size = 0;
+    if (header->prev && header->prev->free == 1)
+    {
+        header->prev->next = header->next;
+        header->prev->size += header->size;
+        header = header->prev;
+        if (header->next)
+            header->next->prev = header;
+    }
     if (header->next && header->next->free == 1)
     {
         header->size += header->next->size;
         header->next = header->next->next;
     }
     remove_empty_pages();
+    // print_adr(init);
 }
 
-__attribute__((visibility("default")))
+__attribute__((visibility("default"))) 
 void *realloc(void *ptr, size_t size)
 {
     if (ptr == NULL)
@@ -217,21 +211,27 @@ void *realloc(void *ptr, size_t size)
     header = header - 1;
     if (size <= header->size) // Remain space in current header
     {
-        header->used_size = size;
-        return header->data;
+        return get_data(header);
+    }
+    else if (header->next && header->next->free == 1)
+    {
+        header->size += header->next->size;
+        header->next = header->next->next;
+        return get_data(header);
     }
     else
     {
         void *new_alloc = malloc(size);
-        mempcpy(new_alloc, header->data, header->used_size);
+        void *data_zone = get_data(header);
+        mempcpy(new_alloc, data_zone, header->size);
         header->free = 1;
-        header->used_size = 0;
         return new_alloc;
     }
     return NULL;
 }
 
-__attribute__((visibility("default"))) void *calloc(size_t nmemb, size_t size)
+__attribute__((visibility("default")))
+void *calloc(size_t nmemb, size_t size)
 {
     if (nmemb == 0 || size == 0)
         return NULL;
