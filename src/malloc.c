@@ -93,8 +93,7 @@ static struct header *split_block(struct header *new, size_t size)
     return new;
 }
 
-__attribute__((visibility("default"))) 
-void *malloc(size_t size)
+__attribute__((visibility("default"))) void *malloc(size_t size)
 {
     if (size == 0)
         return NULL;
@@ -175,8 +174,7 @@ static void remove_empty_pages(void)
     }
 }
 
-__attribute__((visibility("default"))) 
-void free(void *ptr)
+__attribute__((visibility("default"))) void free(void *ptr)
 {
     if (ptr == NULL)
         return;
@@ -197,16 +195,17 @@ void free(void *ptr)
         header->next = header->next->next;
     }
     remove_empty_pages();
-    // print_adr(init);
 }
 
-__attribute__((visibility("default"))) 
-void *realloc(void *ptr, size_t size)
+__attribute__((visibility("default"))) void *realloc(void *ptr, size_t size)
 {
     if (ptr == NULL)
         return malloc(size);
     if (size == 0)
+    {
         free(ptr);
+        return NULL;
+    }
     struct header *header = ptr;
     header = header - 1;
     if (size <= header->size) // Remain space in current header
@@ -230,15 +229,15 @@ void *realloc(void *ptr, size_t size)
     return NULL;
 }
 
-__attribute__((visibility("default")))
-void *calloc(size_t nmemb, size_t size)
+__attribute__((visibility("default"))) void *calloc(size_t nmemb, size_t size)
 {
     if (nmemb == 0 || size == 0)
         return NULL;
     size_t res = 0;
-    int over = __builtin_umull_overflow(nmemb, size, &res);
-    if (over)
-        errx(1, "calloc: overflow detected");
+    if (__builtin_umull_overflow(nmemb, size, &res))
+    {
+        return NULL;
+    }
     else
     {
         void *alloc = malloc(res);

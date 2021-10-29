@@ -4,6 +4,8 @@
 
 void print_adr(struct page *page)
 {
+    printf("%d\n", sizeof(struct page));
+    printf("%d\n", sizeof(struct header));
     int i = 1;
     if (page == NULL)
         printf("Empty page\n");

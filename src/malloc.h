@@ -10,6 +10,8 @@ struct page
     size_t page_size; // Size of page
 
     struct page *next;
+
+    size_t align; // To align on 16 bytes
 };
 
 // Need to reduce the field to optimize space
