@@ -2,7 +2,7 @@
 
 void *page_begin(void *ptr, size_t page_size)
 {
-    unsigned long tmp = (unsigned long) ptr;
+    unsigned long tmp = (unsigned long)ptr;
     size_t dec = 0;
     while (page_size != 1)
     {
@@ -13,5 +13,5 @@ void *page_begin(void *ptr, size_t page_size)
     wise <<= dec;
     wise -= 1;
     unsigned long res = tmp - (tmp & wise);
-    return (void *) res;
+    return (void *)res;
 }
