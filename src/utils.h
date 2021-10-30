@@ -4,9 +4,6 @@
 /* Utilitaries for memory allocation */
 #include "malloc.h"
 
-// Display function
-void print_adr(struct page *page);
-
 // Return the first multiple of size
 int near_size(int nb, int size);
 
